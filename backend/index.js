@@ -6,11 +6,26 @@ const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN;
+const FRONTEND_ORIGIN = process.env.FRONTEND_ORIGIN || '';
+const allowedOrigins = FRONTEND_ORIGIN.split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 app.use(
   cors({
-    origin: FRONTEND_ORIGIN || '*',
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error('Not allowed by CORS'));
+    },
   }),
 );
 app.use(express.json());
