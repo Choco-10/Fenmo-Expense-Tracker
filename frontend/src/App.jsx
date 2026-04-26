@@ -3,11 +3,18 @@ import { createExpense, fetchExpenses, fetchHealth } from './api'
 import './App.css'
 
 function rupeesTextToPaise(value) {
-  const normalized = String(value).trim()
+  if (value === null || value === undefined) return null
 
-  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
-    return null
-  }
+  // Remove common separators and currency symbol, allow leading dot like ".50"
+  let normalized = String(value).trim()
+  normalized = normalized.replace(/[,\s]/g, '') // remove commas and spaces
+  normalized = normalized.replace(/^₹/, '') // remove leading rupee symbol
+
+  // If user entered ".50", treat as "0.50"
+  if (normalized.startsWith('.')) normalized = `0${normalized}`
+
+  // Validate: digits with optional one or two decimal places
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) return null
 
   const [rupeesPart, paisePart = ''] = normalized.split('.')
   const paise = (paisePart + '00').slice(0, 2)
@@ -146,7 +153,6 @@ function App() {
             onChange={handleChange}
             placeholder="Amount (Rs)"
             inputMode="decimal"
-            pattern="^\\d+(\\.\\d{1,2})?$"
             required
           />
           <input
