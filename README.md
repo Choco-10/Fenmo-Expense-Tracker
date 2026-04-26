@@ -133,7 +133,7 @@ npm run dev
 
 ## Live Demo
 
-- **Frontend (Vercel)**: [https://fenmo-expense-tracker-frontend.vercel.app](https://fenmo-expense-tracker-frontend.vercel.app) *(Update this link to your specific deploy once synced)*
+- **Frontend (Vercel)**: [https://fenmo-expense-tracker-eight.vercel.app/](https://fenmo-expense-tracker-eight.vercel.app/) *(Update this link to your specific deploy once synced)*
 - **Backend API (Render)**: [https://fenmo-expense-tracker-5d3b.onrender.com](https://fenmo-expense-tracker-5d3b.onrender.com)
 
 ## Assignment Notes & Explanations
