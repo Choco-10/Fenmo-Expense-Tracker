@@ -15,6 +15,19 @@ app.use(
 );
 app.use(express.json());
 
+async function initializeDatabase() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS expenses (
+      id SERIAL PRIMARY KEY,
+      title TEXT NOT NULL,
+      amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
+      category TEXT,
+      expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    );
+  `);
+}
+
 app.get('/api/health', async (req, res) => {
   try {
     await db.query('SELECT 1');
@@ -24,6 +37,47 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`Backend running on http://localhost:${PORT}`);
+app.get('/api/expenses', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      `SELECT id, title, amount, category, expense_date
+       FROM expenses
+       ORDER BY expense_date DESC, id DESC`,
+    );
+    res.json(rows);
+  } catch (error) {
+    res.status(500).json({ message: 'Failed to fetch expenses' });
+  }
 });
+
+app.post('/api/expenses', async (req, res) => {
+  try {
+    const { title, amount, category, expenseDate } = req.body;
+
+    if (!title || amount === undefined || amount === null || Number(amount) < 0) {
+      return res.status(400).json({ message: 'title and valid amount are required' });
+    }
+
+    const { rows } = await db.query(
+      `INSERT INTO expenses (title, amount, category, expense_date)
+       VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE))
+       RETURNING id, title, amount, category, expense_date`,
+      [title.trim(), Number(amount), category || null, expenseDate || null],
+    );
+
+    return res.status(201).json(rows[0]);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to create expense' });
+  }
+});
+
+initializeDatabase()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Backend running on http://localhost:${PORT}`);
+    });
+  })
+  .catch((error) => {
+    console.error('Database initialization failed:', error.message);
+    process.exit(1);
+  });
