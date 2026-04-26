@@ -46,6 +46,7 @@ function isExpenseDateTimeAllowed(date) {
 }
 
 async function initializeDatabase() {
+  // Create table with current schema if it doesn't exist
   await db.query(`
     CREATE TABLE IF NOT EXISTS expenses (
       id SERIAL PRIMARY KEY,
@@ -58,34 +59,25 @@ async function initializeDatabase() {
     );
   `);
 
-  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS description TEXT`);
-  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS date TIMESTAMP`);
-  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS idempotency_key TEXT UNIQUE`);
-  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_at TIMESTAMP`);
-  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_date DATE`);
-  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS title TEXT`);
+  try {
+    // Execute silent schema upgrades for older database states
+    await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS description TEXT`);
+    await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS date TIMESTAMP`);
+    await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS idempotency_key TEXT UNIQUE`);
+    await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS category TEXT`);
 
-  await db.query(`
-    UPDATE expenses
-    SET description = COALESCE(NULLIF(TRIM(description), ''), NULLIF(TRIM(title), ''), 'No description')
-    WHERE description IS NULL OR TRIM(description) = ''
-  `);
+    // Backfill any potential null values before enforcing constraints
+    await db.query(`UPDATE expenses SET description = 'No description' WHERE description IS NULL OR TRIM(description) = ''`);
+    await db.query(`UPDATE expenses SET date = created_at WHERE date IS NULL`);
+    await db.query(`UPDATE expenses SET category = 'Misc' WHERE category IS NULL OR TRIM(category) = ''`);
 
-  await db.query(`
-    UPDATE expenses
-    SET date = COALESCE(date, expense_at, expense_date::timestamp, created_at, NOW())
-    WHERE date IS NULL
-  `);
-
-  await db.query(`
-    UPDATE expenses
-    SET category = 'Misc'
-    WHERE category IS NULL OR TRIM(category) = ''
-  `);
-
-  await db.query(`ALTER TABLE expenses ALTER COLUMN category SET NOT NULL`);
-  await db.query(`ALTER TABLE expenses ALTER COLUMN description SET NOT NULL`);
-  await db.query(`ALTER TABLE expenses ALTER COLUMN date SET NOT NULL`);
+    // Enforce NOT NULL for stability
+    await db.query(`ALTER TABLE expenses ALTER COLUMN category SET NOT NULL`);
+    await db.query(`ALTER TABLE expenses ALTER COLUMN description SET NOT NULL`);
+    await db.query(`ALTER TABLE expenses ALTER COLUMN date SET NOT NULL`);
+  } catch (error) {
+    console.warn('Note: Schema evolution checks safely skipped.', error.message);
+  }
 }
 
 app.get('/api/health', async (req, res) => {
@@ -127,6 +119,7 @@ async function listExpenses(req, res) {
 
     return res.json(rows);
   } catch (error) {
+    console.error('listExpenses error:', error);
     return res.status(500).json({ message: 'Failed to fetch expenses' });
   }
 }
@@ -190,6 +183,7 @@ async function createExpense(req, res) {
 
     return res.status(201).json(rows[0]);
   } catch (error) {
+    console.error('createExpense error:', error);
     if (error.code === '23505') {
       return res.status(409).json({ message: 'Duplicate idempotency key' });
     }

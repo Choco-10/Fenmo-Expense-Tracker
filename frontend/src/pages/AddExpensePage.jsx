@@ -82,7 +82,7 @@ function AddExpensePage() {
   return (
     <>
       <p className="status">{status}</p>
-      {error ? <p className="status">{error}</p> : null}
+      {error ? <p className="error-banner">{error}</p> : null}
       <ExpenseForm form={form} saving={saving} onChange={handleChange} onSubmit={handleSubmit} />
     </>
   )

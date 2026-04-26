@@ -8,10 +8,12 @@ function ExpenseForm({ form, saving, onChange, onSubmit }) {
       <form className="form-grid" onSubmit={onSubmit}>
         <input
           name="amount"
+          type="number"
+          min="0"
+          step="0.01"
           value={form.amount}
           onChange={onChange}
           placeholder="Amount (Rs)"
-          inputMode="decimal"
           required
         />
 

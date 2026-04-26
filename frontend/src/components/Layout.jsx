@@ -13,6 +13,7 @@ function Layout() {
           <NavLink to="/" end>
             Dashboard
           </NavLink>
+          <NavLink to="/summary">Summary</NavLink>
           <NavLink to="/add">Add Expense</NavLink>
           <NavLink to="/health">System Health</NavLink>
         </nav>

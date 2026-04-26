@@ -55,7 +55,7 @@ function DashboardPage() {
   return (
     <>
       {loading ? <p className="status">Loading expenses...</p> : <p className="status">{status}</p>}
-      {error ? <p className="status">{error}</p> : null}
+      {error ? <p className="error-banner">{error}</p> : null}
 
       <ExpenseFilters
         filters={filters}
@@ -65,7 +65,6 @@ function DashboardPage() {
       />
 
       <ExpenseList expenses={expenses} />
-      <CategorySummary expenses={expenses} />
     </>
   )
 }

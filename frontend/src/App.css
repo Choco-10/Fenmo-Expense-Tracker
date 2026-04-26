@@ -53,6 +53,16 @@
   color: var(--muted);
 }
 
+.error-banner {
+  background-color: #fee2e2;
+  color: #991b1b;
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1px solid #f87171;
+  margin: 0;
+  font-weight: 500;
+}
+
 .card {
   border: 1px solid var(--border);
   border-radius: 14px;
