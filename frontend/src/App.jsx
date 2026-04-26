@@ -2,6 +2,42 @@ import { useEffect, useMemo, useState } from 'react'
 import { createExpense, fetchExpenses, fetchHealth } from './api'
 import './App.css'
 
+function rupeesTextToPaise(value) {
+  const normalized = String(value).trim()
+
+  if (!/^\d+(\.\d{1,2})?$/.test(normalized)) {
+    return null
+  }
+
+  const [rupeesPart, paisePart = ''] = normalized.split('.')
+  const paise = (paisePart + '00').slice(0, 2)
+
+  return Number(rupeesPart) * 100 + Number(paise)
+}
+
+function amountToPaise(amount) {
+  const parsed = rupeesTextToPaise(amount)
+  return parsed ?? 0
+}
+
+function formatInrFromPaise(paise) {
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    minimumFractionDigits: 2,
+  }).format(paise / 100)
+}
+
+function formatDate(dateText) {
+  const date = new Date(dateText)
+
+  if (Number.isNaN(date.getTime())) {
+    return dateText
+  }
+
+  return date.toLocaleDateString('en-IN')
+}
+
 function App() {
   const [status, setStatus] = useState('Not checked yet')
   const [loading, setLoading] = useState(false)
@@ -14,8 +50,8 @@ function App() {
   })
   const [saving, setSaving] = useState(false)
 
-  const total = useMemo(
-    () => expenses.reduce((sum, item) => sum + Number(item.amount), 0),
+  const totalPaise = useMemo(
+    () => expenses.reduce((sum, item) => sum + amountToPaise(item.amount), 0),
     [expenses],
   )
 
@@ -54,12 +90,19 @@ function App() {
 
   const handleSubmit = async (event) => {
     event.preventDefault()
+    const amountPaise = rupeesTextToPaise(form.amount)
+
+    if (amountPaise === null) {
+      setStatus('Amount must be in rupees with up to 2 decimal places')
+      return
+    }
+
     setSaving(true)
 
     try {
       const created = await createExpense({
         title: form.title,
-        amount: Number(form.amount),
+        amount: (amountPaise / 100).toFixed(2),
         category: form.category,
         expenseDate: form.expenseDate || null,
       })
@@ -101,10 +144,9 @@ function App() {
             name="amount"
             value={form.amount}
             onChange={handleChange}
-            placeholder="Amount"
-            type="number"
-            min="0"
-            step="0.01"
+            placeholder="Amount (Rs)"
+            inputMode="decimal"
+            pattern="^\\d+(\\.\\d{1,2})?$"
             required
           />
           <input
@@ -128,7 +170,7 @@ function App() {
       <section className="card">
         <div className="summary-row">
           <h2>Expenses</h2>
-          <strong>Total: ${total.toFixed(2)}</strong>
+          <strong>Total: {formatInrFromPaise(totalPaise)}</strong>
         </div>
 
         {expenses.length === 0 ? (
@@ -142,8 +184,8 @@ function App() {
                   <span>{item.category || 'Uncategorized'}</span>
                 </div>
                 <div className="right">
-                  <strong>${Number(item.amount).toFixed(2)}</strong>
-                  <span>{item.expense_date}</span>
+                  <strong>{formatInrFromPaise(amountToPaise(item.amount))}</strong>
+                  <span>{formatDate(item.expense_date)}</span>
                 </div>
               </li>
             ))}

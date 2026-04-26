@@ -68,16 +68,24 @@ app.get('/api/expenses', async (req, res) => {
 app.post('/api/expenses', async (req, res) => {
   try {
     const { title, amount, category, expenseDate } = req.body;
+    const normalizedTitle = typeof title === 'string' ? title.trim() : '';
+    const amountText = String(amount ?? '').trim();
 
-    if (!title || amount === undefined || amount === null || Number(amount) < 0) {
+    if (!normalizedTitle) {
       return res.status(400).json({ message: 'title and valid amount are required' });
     }
+
+    if (!/^\d{1,10}(\.\d{1,2})?$/.test(amountText)) {
+      return res.status(400).json({ message: 'amount must be a valid rupee value up to 2 decimals' });
+    }
+
+    const normalizedAmount = Number(amountText).toFixed(2);
 
     const { rows } = await db.query(
       `INSERT INTO expenses (title, amount, category, expense_date)
        VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE))
        RETURNING id, title, amount, category, expense_date`,
-      [title.trim(), Number(amount), category || null, expenseDate || null],
+      [normalizedTitle, normalizedAmount, category || null, expenseDate || null],
     );
 
     return res.status(201).json(rows[0]);
