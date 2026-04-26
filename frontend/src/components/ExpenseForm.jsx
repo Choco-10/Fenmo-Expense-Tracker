@@ -34,15 +34,26 @@ function ExpenseForm({ form, saving, onChange, onSubmit }) {
           required
         />
 
-        <input
-          name="date"
-          value={form.date}
-          onChange={onChange}
-          type="datetime-local"
-          min={minLocalDateTimeValue()}
-          max={nowLocalDateTimeValue()}
-          required
-        />
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <input
+            name="date"
+            value={form.date}
+            onChange={onChange}
+            type="datetime-local"
+            min={minLocalDateTimeValue()}
+            max={nowLocalDateTimeValue()}
+            required
+            style={{ width: '100%', flex: 1 }}
+          />
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => onChange({ target: { name: 'date', value: nowLocalDateTimeValue() } })}
+            title="Set to current date and time"
+          >
+            Now
+          </button>
+        </div>
 
         <button type="submit" disabled={saving}>
           {saving ? 'Saving...' : 'Save Expense'}

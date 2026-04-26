@@ -130,3 +130,26 @@ npm run dev
 
 - Frontend production build completed successfully.
 - Backend syntax check completed successfully.
+
+## Live Demo
+
+- **Frontend (Vercel)**: [https://fenmo-expense-tracker-frontend.vercel.app](https://fenmo-expense-tracker-frontend.vercel.app) *(Update this link to your specific deploy once synced)*
+- **Backend API (Render)**: [https://fenmo-expense-tracker-5d3b.onrender.com](https://fenmo-expense-tracker-5d3b.onrender.com)
+
+## Assignment Notes & Explanations
+
+### Persistence Mechanism Choice
+I chose **PostgreSQL** for data persistence. While a simple JSON file or SQLite would solve the problem quickly in a local prototype, PostgreSQL provides true production-like quality. It easily handles concurrent reads/writes, offers robust constraints (e.g., rejecting negative balances directly at the database layer), and integrates frictionlessly with enterprise hosting environments.
+
+### Key Design Decisions
+- **Decoupled Full-Stack Architecture:** Separated the application into an Express backend and a React frontend to mimic real-world scalable architectures.
+- **Idempotency Keys:** Designed the `POST /expenses` endpoint leveraging an `idempotency_key` mechanism to resolve the requirement for safe network retries without creating duplicate financial records.
+- **Dedicated Summary View:** Designed a tabbed navigation system utilizing React Router to keep the dashboard clean while still providing an aggregate UI for category expenses.
+
+### Trade-offs Made Because of the Timebox
+- **Authentication:** Skipped user authorization logic. A real personal finance tool requires JWTs and row-level security per user.
+- **State Management:** Relied heavily on localized `useState` and prop drilling. A production-grade app with deep component trees would likely leverage Redux or React Context.
+
+### Anything Intentionally Not Done
+- **Pagination / Cursors:** Withheld paginated API limits since category and date filters are generally sufficient for a concise demo implementation.
+- **Formal Data Migration Tooling:** Omitted heavy ORM dependencies (like Prisma or Knex), choosing instead to utilize a lightweight `pg` driver and an initialization script for schema definitions.
