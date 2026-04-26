@@ -30,17 +30,62 @@ app.use(
 );
 app.use(express.json());
 
+const MIN_EXPENSE_DATETIME = new Date('2000-01-01T00:00:00Z');
+const ALLOWED_SORTS = new Set(['date_desc', 'date_asc']);
+
+function parseExpenseDateTime(value) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return parsed;
+}
+
+function isExpenseDateTimeAllowed(date) {
+  const now = new Date();
+  return date >= MIN_EXPENSE_DATETIME && date <= now;
+}
+
 async function initializeDatabase() {
   await db.query(`
     CREATE TABLE IF NOT EXISTS expenses (
       id SERIAL PRIMARY KEY,
-      title TEXT NOT NULL,
       amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
-      category TEXT,
-      expense_date DATE NOT NULL DEFAULT CURRENT_DATE,
-      created_at TIMESTAMP NOT NULL DEFAULT NOW()
+      category TEXT NOT NULL,
+      description TEXT NOT NULL,
+      date TIMESTAMP NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+      idempotency_key TEXT UNIQUE
     );
   `);
+
+  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS description TEXT`);
+  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS date TIMESTAMP`);
+  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS idempotency_key TEXT UNIQUE`);
+  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_at TIMESTAMP`);
+  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS expense_date DATE`);
+  await db.query(`ALTER TABLE expenses ADD COLUMN IF NOT EXISTS title TEXT`);
+
+  await db.query(`
+    UPDATE expenses
+    SET description = COALESCE(NULLIF(TRIM(description), ''), NULLIF(TRIM(title), ''), 'No description')
+    WHERE description IS NULL OR TRIM(description) = ''
+  `);
+
+  await db.query(`
+    UPDATE expenses
+    SET date = COALESCE(date, expense_at, expense_date::timestamp, created_at, NOW())
+    WHERE date IS NULL
+  `);
+
+  await db.query(`
+    UPDATE expenses
+    SET category = 'Misc'
+    WHERE category IS NULL OR TRIM(category) = ''
+  `);
+
+  await db.query(`ALTER TABLE expenses ALTER COLUMN category SET NOT NULL`);
+  await db.query(`ALTER TABLE expenses ALTER COLUMN description SET NOT NULL`);
+  await db.query(`ALTER TABLE expenses ALTER COLUMN date SET NOT NULL`);
 }
 
 app.get('/api/health', async (req, res) => {
@@ -52,47 +97,109 @@ app.get('/api/health', async (req, res) => {
   }
 });
 
-app.get('/api/expenses', async (req, res) => {
+async function listExpenses(req, res) {
   try {
-    const { rows } = await db.query(
-      `SELECT id, title, amount, category, expense_date
-       FROM expenses
-       ORDER BY expense_date DESC, id DESC`,
-    );
-    res.json(rows);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to fetch expenses' });
-  }
-});
+    const { category, sort } = req.query;
+    const conditions = [];
+    const values = [];
 
-app.post('/api/expenses', async (req, res) => {
-  try {
-    const { title, amount, category, expenseDate } = req.body;
-    const normalizedTitle = typeof title === 'string' ? title.trim() : '';
-    const amountText = String(amount ?? '').trim();
-
-    if (!normalizedTitle) {
-      return res.status(400).json({ message: 'title and valid amount are required' });
+    if (typeof sort === 'string' && sort.trim() && !ALLOWED_SORTS.has(sort)) {
+      return res.status(400).json({ message: 'sort must be date_desc or date_asc' });
     }
 
+    const normalizedSort = sort && ALLOWED_SORTS.has(sort) ? sort : 'date_desc';
+    const orderBy = normalizedSort === 'date_asc' ? 'date ASC, id ASC' : 'date DESC, id DESC';
+
+    if (typeof category === 'string' && category.trim()) {
+      values.push(category.trim());
+      conditions.push(`LOWER(category) = LOWER($${values.length})`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const { rows } = await db.query(
+      `SELECT id, amount, category, description, date, created_at
+       FROM expenses
+       ${whereClause}
+       ORDER BY ${orderBy}`,
+      values,
+    );
+
+    return res.json(rows);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to fetch expenses' });
+  }
+}
+
+async function createExpense(req, res) {
+  try {
+    const { amount, category, description, date, idempotencyKey } = req.body;
+    const amountText = String(amount ?? '').trim();
+    const normalizedCategory = typeof category === 'string' ? category.trim() : '';
+    const normalizedDescription = typeof description === 'string' ? description.trim() : '';
+    const parsedExpenseDateTime = parseExpenseDateTime(date);
+    const retryKey = req.get('Idempotency-Key') || idempotencyKey || null;
+
     if (!/^\d{1,10}(\.\d{1,2})?$/.test(amountText)) {
-      return res.status(400).json({ message: 'amount must be a valid rupee value up to 2 decimals' });
+      return res.status(400).json({ message: 'amount must be a non-negative rupee value up to 2 decimals' });
+    }
+
+    if (!normalizedCategory) {
+      return res.status(400).json({ message: 'category is required' });
+    }
+
+    if (!normalizedDescription) {
+      return res.status(400).json({ message: 'description is required' });
+    }
+
+    if (!parsedExpenseDateTime) {
+      return res.status(400).json({ message: 'date must be a valid datetime' });
+    }
+
+    if (!isExpenseDateTimeAllowed(parsedExpenseDateTime)) {
+      return res.status(400).json({ message: 'date must be between 2000-01-01 and now' });
+    }
+
+    if (retryKey) {
+      const existing = await db.query(
+        `SELECT id, amount, category, description, date, created_at
+         FROM expenses
+         WHERE idempotency_key = $1`,
+        [retryKey],
+      );
+
+      if (existing.rows.length > 0) {
+        return res.status(200).json(existing.rows[0]);
+      }
     }
 
     const normalizedAmount = Number(amountText).toFixed(2);
 
     const { rows } = await db.query(
-      `INSERT INTO expenses (title, amount, category, expense_date)
-       VALUES ($1, $2, $3, COALESCE($4, CURRENT_DATE))
-       RETURNING id, title, amount, category, expense_date`,
-      [normalizedTitle, normalizedAmount, category || null, expenseDate || null],
+      `INSERT INTO expenses (amount, category, description, date, idempotency_key)
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, amount, category, description, date, created_at`,
+      [
+        normalizedAmount,
+        normalizedCategory,
+        normalizedDescription,
+        parsedExpenseDateTime.toISOString(),
+        retryKey,
+      ],
     );
 
     return res.status(201).json(rows[0]);
   } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ message: 'Duplicate idempotency key' });
+    }
+
     return res.status(500).json({ message: 'Failed to create expense' });
   }
-});
+}
+
+app.get(['/api/expenses', '/expenses'], listExpenses);
+app.post(['/api/expenses', '/expenses'], createExpense);
 
 initializeDatabase()
   .then(() => {
